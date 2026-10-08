@@ -195,4 +195,11 @@ uncompyle6.exe simulation/services/cheat_service.pyc > out.py
 
 ---
 
+## 📄 许可证与安全 (License & Security)
+
+- **开源许可证**：本项目基于 [GNU GPL v3.0](LICENSE) 开源发布（仅供学习研究）。
+- **安全政策**：详见 [SECURITY.md](SECURITY.md)。
+
+---
+
 *Sims4Multiplayer（SimSync）· 从 S4MP 启发自制 · 2026-08-03*
