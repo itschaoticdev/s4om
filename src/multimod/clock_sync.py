@@ -41,35 +41,33 @@ def _install_clock_hook():
         from clock import GameClock, ClockSpeedMode  # noqa: F401
         _orig_set_clock_speed = GameClock.set_clock_speed
 
-        def _patched_set_clock_speed(self, speed, source=None, reason="", immediate=False):
-            global _applying_remote
+        # fork: pass the game's own arguments straight through. The old fixed signature
+        # (speed, source, reason, immediate) didn't match the real GameClock.set_clock_speed,
+        # so the game's own calls (e.g. pressing play) raised before reaching this body and the
+        # game stayed paused - Sims wouldn't walk even for a host alone in the room.
+        def _patched_set_clock_speed(self, speed, *args, **kwargs):
             try:
                 if _clock_sync_enabled:
                     if _is_host:
                         # 主机：正常执行 + 广播给客机
-                        result = _orig_set_clock_speed(self, speed, source=source, reason=reason, immediate=immediate)
-                        network._send_clock_broadcast(speed)
+                        result = _orig_set_clock_speed(self, speed, *args, **kwargs)
+                        try:
+                            network._send_clock_broadcast(speed)
+                        except Exception as e:
+                            network._log("clock broadcast error: {}".format(e))
                         return result
-                    else:
-                        # 客机：只允许应用主机广播的速度，其余拦截
-                        if _applying_remote:
-                            # 来自主机的广播 → 放行
-                            return _orig_set_clock_speed(self, speed, source=source, reason=reason, immediate=immediate)
-                        # 客机自己点暂停/播放 → 拦截 + 通知
-                        if _orig_set_clock_speed is not None:
-                            # 恢复原来的速度（不改变）
-                            pass
-                        network._log("clock intercept: 客机试图修改速度 speed={}".format(speed))
-                        network._notify("⏸ 时间由主机控制，请让主机开始/暂停")
-                        return False
+                    if _applying_remote:
+                        # 来自主机的广播 → 放行
+                        return _orig_set_clock_speed(self, speed, *args, **kwargs)
+                    # 客机自己点暂停/播放 → 拦截 + 通知
+                    network._log("clock intercept: client tried to change speed={}".format(speed))
+                    network._notify("Time is controlled by the host")
+                    return False
                 # 未启用同步 → 原逻辑
-                return _orig_set_clock_speed(self, speed, source=source, reason=reason, immediate=immediate)
+                return _orig_set_clock_speed(self, speed, *args, **kwargs)
             except Exception as e:
                 network._log("clock hook error: {}".format(e))
-                try:
-                    return _orig_set_clock_speed(self, speed, source=source, reason=reason, immediate=immediate)
-                except Exception:
-                    return False
+                return _orig_set_clock_speed(self, speed, *args, **kwargs)
 
         GameClock.set_clock_speed = _patched_set_clock_speed
         network._log("clock hook installed")
