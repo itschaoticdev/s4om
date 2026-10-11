@@ -16,8 +16,8 @@ import time
 HERE = os.path.dirname(os.path.abspath(__file__))
 SRC = os.path.join(HERE, "..", "src")
 PORT = 19777
-ROLES = ("host", "client", "client2")
-RUN_SECONDS = 8.0
+ROLES = ("host",) + tuple("client" if i == 1 else "client%d" % i for i in range(1, int(os.environ.get("S4OM_TEST_PLAYERS", "3"))))
+RUN_SECONDS = float(os.environ.get("S4OM_TEST_SECONDS", "8"))
 
 
 def _install_game_stubs():

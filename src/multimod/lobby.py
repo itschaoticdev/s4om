@@ -79,7 +79,7 @@ def add_chat(from_name, text):
     except Exception:
         pass
 ROOM_PASSWORD = ""           # private 房间的加入密码（4-8 位）
-MAX_PLAYERS = 8              # v9.25: 房间人数上限（防恶意握手内存膨胀）
+MAX_PLAYERS = 12             # fork: 12 per room (host + 11), same as the relay cap
 
 
 def _gen_room_code():

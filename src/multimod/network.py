@@ -241,10 +241,16 @@ def _relay_host_thread(host, port, token, code):
                 ctl.ioctl(socket.SIO_KEEPALIVE_VALS, (1, 10000, 3000))
             except Exception:
                 pass
+            last_stat = 0
             while not _relay_stop:
                 line = _relay_readline(ctl)
                 if not line:
                     raise RuntimeError("relay control link closed")
+                if time.time() - last_stat > SESSION_STAT_EVERY:
+                    last_stat = time.time()
+                    stat = _session_stat()
+                    if stat:
+                        ctl.sendall((stat + "\n").encode("utf-8"))
                 if line == "PING":
                     # Answer every ping. With traffic flowing only relay -> host, home routers
                     # and ISP NATs dropped the link roughly every 2 minutes (WinError 10054).
@@ -267,6 +273,39 @@ def _relay_host_thread(host, port, token, code):
 
 
 PING_TIMEOUT_RELAY = 60   # relay pings every 20s
+SESSION_STAT_EVERY = 300  # seconds between session summaries sent to the relay (Discord recap)
+
+
+def _session_funds():
+    """Household funds for the session recap, or None."""
+    try:
+        import services
+        hh = services.active_household()
+        if hh is not None and getattr(hh, "funds", None) is not None:
+            f = hh.funds
+            return int(getattr(f, "money", f))
+    except Exception:
+        pass
+    try:
+        from multimod import money_sync
+        return money_sync._get_funds()
+    except Exception:
+        return None
+
+
+def _session_stat():
+    """'STAT {json}' line for the relay - names and household money only. None when the host
+    turned recaps off in the launcher (config "session_recap": false)."""
+    cfg = _load_launcher_config() or {}
+    if cfg.get("session_recap", True) is False:
+        return None
+    try:
+        from multimod import lobby
+        names = [str(m.get("name", ""))[:24] for m in lobby._members.values() if m.get("online", True)]
+    except Exception:
+        names = []
+    stat = {"host": str(cfg.get("name", ""))[:24], "players": names[:12], "funds": _session_funds()}
+    return "STAT " + json.dumps(stat, separators=(",", ":"))
 
 
 def _start_relay_host():
@@ -1563,6 +1602,11 @@ def _client_thread(host, port=DEFAULT_PORT):
         global _my_nonce, _peer_nonce
         _my_nonce = _gen_nonce()
         _peer_nonce = b""
+        # fork: a reconnect is a brand-new handshake. Keeping the previous session's key meant the
+        # hello went out signed with it and the host's new welcome was checked against it and
+        # dropped, so after any relay hiccup both sides held different keys and every frame failed
+        # HMAC forever (found by the 12-player chaos test: relay killed + restarted mid-session).
+        _hmac_keys.clear()
         _send_json(sock, {"type": "hello", "name": player_name, "password": room_password,
                           "proto_version": PROTO_VERSION,
                           "client_nonce": _my_nonce.decode("utf-8")}, prio=0)
