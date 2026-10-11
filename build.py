@@ -14,7 +14,7 @@ import shutil
 import sys
 import zipfile
 
-NAME = "Housemates"
+NAME = "S4O"
 ROOT = os.path.dirname(os.path.abspath(__file__))
 SRC = os.path.join(ROOT, "src")
 BUILD = os.path.join(ROOT, "build")
