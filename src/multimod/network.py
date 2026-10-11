@@ -665,14 +665,14 @@ def get_health_label():
     """健康等级（启动器/诊断显示）"""
     score = get_health_score()
     if score is None:
-        return "未测量"
+        return 'not measured'
     if score >= 85:
-        return "🟢 优秀"
+        return '🟢 Excellent'
     if score >= 70:
-        return "🟡 良好"
+        return '🟡 Good'
     if score >= 50:
-        return "🟠 一般"
-    return "🔴 差"
+        return '🟠 Fair'
+    return '🔴 Poor'
 
 
 # ============ 自动消息处理 (alarm 循环, 游戏主线程) ============
@@ -846,11 +846,11 @@ def _check_launcher_cmd():
         if cmd == "mp_ready":
             from multimod import lobby
             lobby.report_my_ready(True)
-            _notify("已准备!")
+            _notify('Ready!')
         elif cmd == "mp_unready":
             from multimod import lobby
             lobby.report_my_ready(False)
-            _notify("已取消准备")
+            _notify('No longer ready')
         elif cmd == "mp_syncsave":
             from multimod import lobby
             lobby.host_start_save_sync()
@@ -860,7 +860,7 @@ def _check_launcher_cmd():
         elif cmd == "mp_leave":
             from multimod import lobby
             lobby.leave_room()
-            _notify("已离开房间")
+            _notify('Left the room')
         elif cmd == "mp_travel":
             # v9.22: 启动器"共同旅行"按钮 → 房主发起旅行同步
             from multimod import lobby
@@ -1167,7 +1167,7 @@ def start_client_discovery():
                                 "name": raw_name,
                                 "ts": time.time(),
                             }
-                            _log("discovered room at {}: {} ({}人) code={}".format(
+                            _log('discovered room at {}: {} ({} players) code={}'.format(
                                 host_ip, msg.get("name", "?"), msg.get("players", 0),
                                 msg.get("room_code", "")))
                     except Exception:
@@ -1425,7 +1425,7 @@ def _server_thread(port=DEFAULT_PORT):
         _server_socket.bind(("0.0.0.0", port))
         _server_socket.listen(5)  # 支持多客户端
         _log("server listening on :{}".format(port))
-        _notify("MP 主机已开启 :{} 等待连接...".format(port))
+        _notify('S4OM: hosting on port {} - waiting for players...'.format(port))
         while True:
             try:
                 conn, addr = _server_socket.accept()
@@ -1541,14 +1541,14 @@ def _client_thread(host, port=DEFAULT_PORT):
             lobby.set_host_ip(host)
         except Exception:
             pass
-        _notify("已连接主机 {}:{}".format(host, port))
+        _notify('Connected to host {}:{}'.format(host, port))
         _client_socket = sock
         # hello 消息（带玩家名 + 房间密码，主机验证后加入）
         try:
             import socket as _s
             player_name = _s.gethostname()
         except Exception:
-            player_name = "玩家"
+            player_name = 'Player'
         # 从启动器配置读密码 + 玩家名（v9.16: 昵称优先）
         room_password = ""
         try:
@@ -1571,7 +1571,7 @@ def _client_thread(host, port=DEFAULT_PORT):
         _recv_loop(sock, is_client=True)
     except Exception as e:
         _log("connect error: {}".format(e))
-        _notify("连接失败: {}".format(e))
+        _notify('Connection failed: {}'.format(e))
         # 记录已知主机 IP（重连调度需要）
         try:
             from multimod import lobby
@@ -1604,7 +1604,7 @@ def mp_host(port=None, visibility="public", _connection=None):
     # 主菜单阶段 alarm 失败；此时游戏已进地段，重试必然成功
     _ensure_alarm()
     if _network_thread and _network_thread.is_alive():
-        output("MP 已经在运行")
+        output('S4OM is already running')
         return
     _is_host = True
     # 房主把自己加入房间列表（M3d）——从启动器配置读可见性/密码
@@ -1643,7 +1643,7 @@ def mp_host(port=None, visibility="public", _connection=None):
         from multimod import core_hooks; core_hooks.install_on_tick_hook()
     except Exception as e:
         _log("on_tick hook install error: {}".format(e))
-    output("MP 主机模式启动 (端口 {})".format(port))
+    output('S4OM: host mode started (port {})'.format(port))
     # v7.0: 房主广播房间（局域网自动发现）
     try:
         _start_host_discovery()
@@ -1657,7 +1657,7 @@ def mp_join(host=None, port=None, _connection=None):
     _log("mp_join called: {}:{}".format(host, port))
     output = sims4.commands.CheatOutput(_connection)
     if not host:
-        output("用法: mp_join <主机IP> [端口]")
+        output('Usage: mp_join <host IP> [port]')
         return
     try:
         port = int(port) if port else DEFAULT_PORT
@@ -1680,7 +1680,7 @@ def mp_join(host=None, port=None, _connection=None):
         from multimod import core_hooks; core_hooks.install_on_tick_hook()
     except Exception as e:
         _log("on_tick hook install error: {}".format(e))
-    output("正在连接 {}:{}".format(host, port))
+    output('Connecting to {}:{}'.format(host, port))
     # v7.0: 加入者监听局域网房间（自动发现）
     try:
         start_client_discovery()
@@ -1732,23 +1732,23 @@ def mp_say(text=None, _connection=None):
     _log("mp_say called: {}".format(text))
     output = sims4.commands.CheatOutput(_connection)
     if not text:
-        output("用法: mp_say <消息>")
+        output('Usage: mp_say <message>')
         return
     # v9.1: 修复房主发不了消息的 bug——host 用 _broadcast，client 用 _send_json
     if _is_host:
         _broadcast({"type": "chat", "from": _member_name(0), "text": text})
     elif _client_socket is None:
-        output("未连接! 先 mp_host 或 mp_join")
+        output('Not connected! Host or join first (mp_host / mp_join)')
         return
     else:
         _send_json(_client_socket, {"type": "chat", "from": "me", "text": text})
     # v9.0: 本机消息也写入 lobby state（启动器聊天页显示）
     try:
         from multimod import lobby
-        lobby.add_chat("我", text)
+        lobby.add_chat('Me', text)
     except Exception:
         pass
-    output("已发送: {}".format(text))
+    output('Sent: {}'.format(text))
 
 
 @sims4.commands.Command('mp_emoji', command_type=sims4.commands.CommandType.Live)
@@ -1761,18 +1761,18 @@ def mp_emoji(emoji=None, _connection=None):
     EMOJIS = {"1": "😊", "2": "😂", "3": "❤️", "4": "👍",
               "5": "🎉", "6": "😭", "7": "🤔", "8": "👏"}
     if not emoji:
-        output("快捷表情: " + " ".join("{}={}".format(k, v) for k, v in EMOJIS.items()))
+        output('Quick emotes: ' + " ".join("{}={}".format(k, v) for k, v in EMOJIS.items()))
         return
     text = EMOJIS.get(str(emoji).strip(), str(emoji).strip())
     # v9.1: 修复房主发不了表情的 bug（同 mp_say）
     if _is_host:
         _broadcast({"type": "chat", "from": "me", "text": text})
     elif _client_socket is None:
-        output("未连接! 先 mp_host 或 mp_join")
+        output('Not connected! Host or join first (mp_host / mp_join)')
         return
     else:
         _send_json(_client_socket, {"type": "chat", "from": "me", "text": text})
-    output("已发送: {}".format(text))
+    output('Sent: {}'.format(text))
 
 
 @sims4.commands.Command('mp_poll', command_type=sims4.commands.CommandType.Live)
@@ -1858,14 +1858,14 @@ def _apply_launcher_config():
     global _network_thread, _host_port, _is_host, _my_player_id  # ⚠️ 必须声明！否则赋值被当局部变量 → referenced before assignment
     cfg = _load_launcher_config()
     if not cfg:
-        return False, "无启动器配置 (mp_launcher_config.json)"
+        return False, 'No launcher settings found (mp_launcher_config.json)'
     mode = cfg.get("mode")
     port = int(cfg.get("port", DEFAULT_PORT))
     if mode == "host":
         _host_port = port  # v9.23: 看门狗重启监听用
     if mode == "host":
         if _network_thread and _network_thread.is_alive():
-            return False, "MP 已经在运行"
+            return False, 'S4OM is already running'
         _is_host = True
         _my_player_id = 0
         # 房主建房间（v6.1 修复: auto-apply 也要建房间，否则房间列表为空）
@@ -1901,7 +1901,7 @@ def _apply_launcher_config():
     elif mode == "join" and cfg.get("room_code") and _relay_cfg() is not None:
         # fork: online join by room code through the relay
         if _network_thread and _network_thread.is_alive():
-            return False, "MP 已经在运行"
+            return False, 'S4OM is already running'
         ok, desc = _join_via_relay(cfg["room_code"])
         if not ok:
             return False, desc
@@ -1910,9 +1910,9 @@ def _apply_launcher_config():
     elif mode == "join":
         host = cfg.get("host", "")
         if not host:
-            return False, "加入模式缺少 host IP"
+            return False, "Join mode needs the host's IP"
         if _network_thread and _network_thread.is_alive():
-            return False, "MP 已经在运行"
+            return False, 'S4OM is already running'
         _is_host = False
         # M3c: 时间同步角色 + hook（client 不能改时间）
         try:
@@ -1933,7 +1933,7 @@ def _apply_launcher_config():
         _log("auto join {}:{}".format(host, port))
         _ensure_alarm_retry()
     else:
-        return False, "未知模式: {}".format(mode)
+        return False, 'Unknown mode: {}'.format(mode)
 
     # 自动开始位置同步（连接建立后再触发，最多等 150s）
     # ⚠️ v5.4.3 修复：不能固定 sleep(3) —— 主菜单 auto-apply 时连接未建立，
@@ -1964,7 +1964,7 @@ def _apply_launcher_config():
                 _log("auto sync error: {}".format(e))
         threading.Thread(target=_delayed_sync, daemon=True).start()
 
-    return True, "已按配置自动连接 ({})".format(mode)
+    return True, 'Connected automatically from launcher settings ({})'.format(mode)
 
 
 @sims4.commands.Command('mp_apply', command_type=sims4.commands.CommandType.Live)

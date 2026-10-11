@@ -52,6 +52,10 @@ def _install_clock_hook():
                         # 主机：正常执行 + 广播给客机
                         result = _orig_set_clock_speed(self, speed, *args, **kwargs)
                         try:
+                            network._log("clock: host speed -> {} (result {})".format(int(speed), result))
+                        except Exception:
+                            pass
+                        try:
                             network._send_clock_broadcast(speed)
                         except Exception as e:
                             network._log("clock broadcast error: {}".format(e))
@@ -148,21 +152,21 @@ def mp_clock(action="status", _connection=None):
 
     if action == "on":
         _clock_sync_enabled = True
-        output("时间同步已开启（主机掌控时间）")
+        output('Time sync on (the host controls game speed)')
         network._log("mp_clock on")
         return
     if action == "off":
         _clock_sync_enabled = False
-        output("时间同步已关闭")
+        output('Time sync off')
         network._log("mp_clock off")
         return
 
     # status
     gcs = _get_game_clock()
     speed = int(gcs.clock_speed) if gcs else -1
-    output("时间同步: {} | 角色: {} | 当前速度: {}".format(
-        "开" if _clock_sync_enabled else "关",
-        "主机" if _is_host else "客机",
+    output('Time sync: {} | role: {} | current speed: {}'.format(
+        'on' if _clock_sync_enabled else 'off',
+        'host' if _is_host else 'guest',
         speed))
     network._log("mp_clock status: enabled={} is_host={} speed={}".format(
         _clock_sync_enabled, _is_host, speed))

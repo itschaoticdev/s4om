@@ -191,7 +191,7 @@ def mp_relsync(*args, _connection=None):
         _running = True
         _thread = threading.Thread(target=_broadcast_loop, daemon=True)
         _thread.start()
-    _out("mp_relsync: 关系同步已{}".format("开启" if _running else "关闭"), _connection)
+    _out('mp_relsync: relationship sync {}'.format('on' if _running else 'off'), _connection)
 
 
 def start():

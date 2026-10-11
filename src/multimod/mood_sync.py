@@ -146,12 +146,12 @@ def process_message(data):
         # v8.8: mood 变化时游戏内通知（研究: UiDialogNotification——沉浸感增强）
         _last_notify_mood = _notified_moods.get(sim_id)
         # 只对"明显情绪"通知（mood 名含情绪关键词），避免刷屏
-        _MOOD_LABELS = {"happy": "😊 开心", "confident": "💪 自信", "flirty": "💕 心动",
-                        "energized": "⚡ 精力充沛", "focused": "🎯 专注", "inspired": "✨ 灵感",
-                        "sad": "😢 难过", "angry": "😠 生气", "tense": "😣 紧张",
-                        "uncomfortable": "😖 不适", "bored": "🥱 无聊", "embarrassed": "😳 尴尬",
-                        "dazed": "😵 眩晕", "grossed_out": "🤢 恶心", "playful": "😜 顽皮",
-                        "very_energized": "⚡ 精力爆棚"}
+        _MOOD_LABELS = {"happy": '😊 Happy', "confident": '💪 Confident', "flirty": '💕 Flirty',
+                        "energized": '⚡ Energized', "focused": '🎯 Focused', "inspired": '✨ Inspired',
+                        "sad": '😢 Sad', "angry": '😠 Angry', "tense": '😣 Tense',
+                        "uncomfortable": '😖 Uncomfortable', "bored": '🥱 Bored', "embarrassed": '😳 Embarrassed',
+                        "dazed": '😵 Dazed', "grossed_out": '🤢 Nauseous', "playful": '😜 Playful',
+                        "very_energized": '⚡ Very Energized'}
         label = None
         low = str(mood).lower()
         for k, v in _MOOD_LABELS.items():
@@ -161,7 +161,7 @@ def process_message(data):
         if label and _last_notify_mood != label:
             _notified_moods[sim_id] = label
             try:
-                network._notify("对端小人 {}".format(label))
+                network._notify('remote Sim {}'.format(label))
             except Exception:
                 pass
         # 记录到状态（mood 状态文件供启动器/调试显示）
@@ -193,18 +193,18 @@ def mp_mood(action="status", _connection=None):
             _mood_sync_running = True
             import threading
             threading.Thread(target=_mood_loop, daemon=True).start()
-        output("心情同步已开启")
+        output('Mood sync on')
         network._log("mp_mood on")
         return
     if action == "off":
         _mood_sync_running = False
-        output("心情同步已关闭")
+        output('Mood sync off')
         network._log("mp_mood off")
         return
 
     # status
     mood = _get_my_mood()
-    output("心情同步: {} | 当前 mood: {}".format(
-        "开" if _mood_sync_running else "关",
-        mood[0] if mood else "无"))
+    output('Mood sync: {} | current mood: {}'.format(
+        'on' if _mood_sync_running else 'off',
+        mood[0] if mood else 'none'))
     network._log("mp_mood status: running={} mood={}".format(_mood_sync_running, mood))

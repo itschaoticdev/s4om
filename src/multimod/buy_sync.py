@@ -178,7 +178,7 @@ def mp_buysync(*args, _connection=None):
         _running = True
         _thread = threading.Thread(target=_broadcast_loop, daemon=True)
         _thread.start()
-    _out("mp_buysync: Buy 家具同步已{}".format("开启" if _running else "关闭"), _connection)
+    _out('mp_buysync: buy-mode furniture sync {}'.format('on' if _running else 'off'), _connection)
 
 
 def start():

@@ -84,7 +84,7 @@ def process_message(data):
                     # 只在差异 >50 时应用（避免微小抖动）
                     if abs(int(funds_obj) - int(funds)) > 50:
                         funds_obj.set(int(funds))
-                        network._log("money sync: 应用资金 {}".format(funds))
+                        network._log('money sync: applied funds {}'.format(funds))
                     return
     except Exception as e:
         if network:
@@ -109,14 +109,14 @@ def mp_moneysync(_connection=None):
     if _running:
         _running = False
         if network:
-            network._notify("金钱同步已停止")
+            network._notify('Money sync stopped')
         return
     _running = True
     _last_funds = None
     import threading
     threading.Thread(target=_money_loop, daemon=True).start()
     if network:
-        network._notify("金钱同步已开始 (每 {}s 检查)".format(SYNC_INTERVAL))
+        network._notify('Money sync started (checks every {}s)'.format(SYNC_INTERVAL))
         network._log("money sync started")
 
 
@@ -128,7 +128,7 @@ def mp_money(funds=None, _connection=None):
         _last_funds = None  # 强制广播
         _broadcast_funds()
         if network:
-            network._notify("已广播当前资金")
+            network._notify('Sent current household funds')
     except Exception as e:
         if network:
             network._log("mp_money error: {}".format(e))

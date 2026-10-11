@@ -220,7 +220,7 @@ def process_message(data):
 @sims4.commands.Command('mp_intsync', command_type=sims4.commands.CommandType.Live)
 def mp_intsync(*args, _connection=None):
     global _running, _thread
-    _out("MP 交互同步: {}".format("开" if not _running else "关"))
+    _out('S4OM interaction sync: {}'.format('on' if not _running else 'off'))
     if _running:
         _running = False
         if _thread is not None:
@@ -230,7 +230,7 @@ def mp_intsync(*args, _connection=None):
         _running = True
         _thread = threading.Thread(target=_broadcast_loop, daemon=True)
         _thread.start()
-    _out("mp_intsync: 交互同步已{}".format("开启" if _running else "关闭"), _connection)
+    _out('mp_intsync: interaction sync {}'.format('on' if _running else 'off'), _connection)
 
 
 def start():

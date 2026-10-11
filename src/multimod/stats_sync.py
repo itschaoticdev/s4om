@@ -146,7 +146,7 @@ def process_message(data):
                 except Exception:
                     pass
             if applied > 0 and network:
-                network._log("stats sync: 应用 {} 个需求".format(applied))
+                network._log('stats sync: applied {} needs'.format(applied))
             return
     except Exception as e:
         if network:
@@ -171,12 +171,12 @@ def mp_statssync(_connection=None):
     if _running:
         _running = False
         if network:
-            network._notify("需求同步已停止")
+            network._notify('Needs sync stopped')
         return
     _running = True
     _last_values = {}
     import threading
     threading.Thread(target=_stats_loop, daemon=True).start()
     if network:
-        network._notify("需求同步已开始 (每 {}s 检查)".format(SYNC_INTERVAL))
+        network._notify('Needs sync started (checks every {}s)'.format(SYNC_INTERVAL))
         network._log("stats sync started")

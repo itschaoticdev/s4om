@@ -116,13 +116,13 @@ check('无样本评分 None', network.get_health_score() is None)
 network._rtt_samples = [20, 25, 30, 28]
 score = network.get_health_score()
 check('低 RTT 评分高', score is not None and score >= 85, "score={}".format(score))
-check('低 RTT 标签优秀', "优秀" in network.get_health_label())
+check('低 RTT 标签优秀', "Excellent" in network.get_health_label())
 
 # B3: 差（RTT > 350ms）
 network._rtt_samples = [350, 400, 380, 420]
 score = network.get_health_score()
 check('高 RTT 评分低', score is not None and score < 50, "score={}".format(score))
-check('高 RTT 标签差', "差" in network.get_health_label())
+check('高 RTT 标签差', "Poor" in network.get_health_label())
 
 # B4: 20 次随机 RTT 评分范围 [0,100]
 ok_range = True

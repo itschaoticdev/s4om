@@ -435,10 +435,13 @@ def mp_sync(_connection=None):
 
     if _sync_running:
         _sync_running = False
-        _out("位置同步已停止")
+        _out('Position sync stopped')
         return
-    if network._client_socket is None:
-        _out("未连接! 先 mp_host 或 mp_join")
+    # fork: hosts never have a _client_socket, so this refused to start on every host and the
+    # host's Sims were never sent to joiners. A host broadcasts to whoever is connected (none
+    # yet is fine); a joiner still needs its connection.
+    if not network._is_host and network._client_socket is None:
+        _out('Not connected! Host or join first (mp_host / mp_join)')
         return
     _sync_running = True
     import threading
@@ -459,7 +462,7 @@ def mp_sync(_connection=None):
                 mod.start()
         except Exception as e:
             network._log("{} auto start error: {}".format(_mod_name, e))
-    _out("位置同步已开始 (每 {}s 广播)".format(SYNC_INTERVAL))
+    _out('Position sync started (every {}s)'.format(SYNC_INTERVAL))
 
 
 @sims4.commands.Command('mp_self', command_type=sims4.commands.CommandType.Live)
@@ -468,7 +471,7 @@ def mp_self(_connection=None):
     output = sims4.commands.CheatOutput(_connection)
     sim = _get_active_sim()
     if sim is None:
-        output("未找到 active sim")
+        output('No active Sim found')
         return
     sim_id = int(sim.sim_info.id)
     sim_name = None
@@ -476,7 +479,7 @@ def mp_self(_connection=None):
         sim_name = sim.sim_info.full_name
     except Exception:
         pass
-    output("我的 sim_id: {} ({})".format(sim_id, sim_name))
+    output('My sim_id: {} ({})'.format(sim_id, sim_name))
     network._log("mp_self: sim_id={} name={}".format(sim_id, sim_name))
 
 
@@ -503,7 +506,7 @@ def mp_ai(action="status", _connection=None):
             if _disable_sim_autonomy(sim):
                 _disabled_autonomy_sims.add(sim_id)
                 count += 1
-        output("已关闭 {} 个非活动 sim 的 AI".format(count))
+        output('Turned off autonomy for {} inactive Sims'.format(count))
         network._log("mp_ai off: disabled AI for {} sims".format(count))
         return
 
@@ -514,12 +517,12 @@ def mp_ai(action="status", _connection=None):
             if _enable_sim_autonomy(sim):
                 _disabled_autonomy_sims.discard(sim_id)
                 count += 1
-        output("已恢复 {} 个 sim 的 AI".format(count))
+        output('Restored autonomy for {} Sims'.format(count))
         network._log("mp_ai on: restored AI for {} sims".format(count))
         return
 
     # status
-    output("AI 状态: 已禁用远端 sim = {}".format(len(_disabled_autonomy_sims)))
+    output('AI: disabled on remote Sims = {}'.format(len(_disabled_autonomy_sims)))
     for sim_id in list(_disabled_autonomy_sims)[:5]:
         output("  - sim {}".format(sim_id))
     network._log("mp_ai status: disabled={}".format(len(_disabled_autonomy_sims)))

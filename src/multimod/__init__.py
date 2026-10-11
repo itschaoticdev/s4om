@@ -68,7 +68,7 @@ def mp_hello(*args, _connection=None):
     _log("mp_hello EXECUTED! args={} conn={}".format(args, _connection))
     output = sims4.commands.CheatOutput(_connection)
     output("Sims4Multiplayer v4.2: OK!")
-    _notify("mp_hello v4.2 生效!")
+    _notify('mp_hello v4.2 works!')
 
 
 def _notify(text):

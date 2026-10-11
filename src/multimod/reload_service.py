@@ -44,9 +44,9 @@ def _reload_directory(path, output):
             try:
                 result = _r.reload_file(full)
                 if result is None:
-                    output("⚠️ 重载失败: {}".format(entry))
+                    output('⚠️ Reload failed: {}'.format(entry))
             except Exception as e:
-                output("⚠️ 重载错误 {}: {}".format(entry, e))
+                output('⚠️ Reload error {}: {}'.format(entry, e))
 
 
 # ---- 命令注册（仅游戏环境生效） ----
@@ -58,8 +58,8 @@ if _SIMS4_OK:
         """热重载指定模块（如 mp_reload clock_sync）"""
         output = sims4.commands.CheatOutput(_connection)
         if not module:
-            output("用法: mp_reload <模块名>  (如 mp_reload clock_sync)")
-            output("      mp_reload_all  重载全部模块")
+            output('Usage: mp_reload <module>  (e.g. mp_reload clock_sync)')
+            output('      mp_reload_all  reload all modules')
             return
         try:
             mod_dir = os.path.join(os.path.expanduser("~"), "Documents",
@@ -73,25 +73,25 @@ if _SIMS4_OK:
             path = os.path.join(mod_dir, "multimod", *parts[:-1], fname) if len(parts) > 1 else \
                    os.path.join(mod_dir, "multimod", fname)
             if not os.path.exists(path):
-                output("文件不存在: {}".format(path))
+                output('File not found: {}'.format(path))
                 return
-            output("重载中: {}".format(path))
+            output('Reloading: {}'.format(path))
             result = _r.reload_file(path)
             if result is not None:
-                output("✅ 重载成功: {}".format(fname))
+                output('✅ Reloaded: {}'.format(fname))
                 _log("hot reload OK: {}".format(fname))
             else:
-                output("❌ 重载失败")
+                output('❌ Reload failed')
                 _log("hot reload FAIL: {}".format(fname))
         except Exception as e:
-            output("重载错误: {}".format(e))
+            output('Reload error: {}'.format(e))
             _log("hot reload error: {}".format(e))
 
     @sims4.commands.Command("mp_reload_all", command_type=sims4.commands.CommandType.Live)
     def mp_reload_all(_connection=None):
         """断开网络 + 重载全部模块（参考 S4MP /mp.reload）"""
         output = sims4.commands.CheatOutput(_connection)
-        output("断开连接...")
+        output('Disconnecting...')
         try:
             from multimod import network
             network._log("hot reload: disconnecting...")
@@ -117,13 +117,13 @@ if _SIMS4_OK:
                 network._client_socket = None
             network._network_thread = None
         except Exception as e:
-            output("断开连接失败: {}".format(e))
+            output("Couldn't disconnect: {}".format(e))
             _log("hot reload disconnect error: {}".format(e))
 
-        output("重载全部模块...")
+        output('Reloading all modules...')
         mod_dir = os.path.join(os.path.expanduser("~"), "Documents",
                                "Electronic Arts", "The Sims 4", "Mods", "multimod")
         if os.path.isdir(mod_dir):
             _reload_directory(mod_dir, output)
-        output("✅ 重载完成")
+        output('✅ Reload complete')
         _log("hot reload all: done")
