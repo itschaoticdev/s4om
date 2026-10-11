@@ -165,6 +165,118 @@ def _member_name(player_id):
     return "P{}".format(player_id)
 
 
+# ============ fork: S4OM relay (join by room code, no port forwarding) ============
+# Host and joiners both connect OUT to the relay (relay/relay.py), which pipes
+# raw bytes. Each joiner arrives at the host as a separate DATA link that is fed
+# to _handle_client exactly like a LAN accept, so the game protocol is unchanged.
+RELAY_DEFAULT_PORT = 7656
+_relay_join = None   # (relay_host, relay_port, token, room_code) while joining via relay
+_relay_stop = False
+
+
+def _relay_cfg():
+    """(host, port, token) from launcher config "relay"/"relay_token", or None."""
+    cfg = _load_launcher_config() or {}
+    relay = str(cfg.get("relay", "") or "").strip()
+    if not relay:
+        return None
+    host, _, port = relay.partition(":")
+    try:
+        port = int(port) if port else RELAY_DEFAULT_PORT
+    except Exception:
+        port = RELAY_DEFAULT_PORT
+    return host, port, str(cfg.get("relay_token", "") or "-")
+
+
+def _relay_readline(sock, limit=256):
+    """Read one handshake line byte-by-byte so no game bytes are consumed."""
+    buf = b""
+    while len(buf) < limit:
+        c = sock.recv(1)
+        if not c or c == b"\n":
+            break
+        buf += c
+    return buf.decode("ascii", "replace").strip()
+
+
+def _relay_connect(host, port, line):
+    sock = socket.create_connection((host, port), timeout=10)
+    try:
+        sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+        sock.setsockopt(socket.SOL_SOCKET, socket.SO_KEEPALIVE, 1)
+    except Exception:
+        pass
+    sock.sendall((line + "\n").encode("ascii"))
+    reply = _relay_readline(sock)
+    if not reply.startswith("OK"):
+        sock.close()
+        raise RuntimeError(reply or "relay closed the connection")
+    sock.settimeout(None)
+    return sock
+
+
+def _relay_accept(host, port, code, cid):
+    try:
+        sock = _relay_connect(host, port, "S4OM DATA {} {}".format(code, cid))
+    except Exception as e:
+        _log("relay data link {} failed: {}".format(cid, e))
+        return
+    _handle_client(sock, ("relay:" + cid, 0))
+
+
+def _relay_host_thread(host, port, token, code):
+    """Keep the host's control link to the relay open; spawn a DATA link per joiner."""
+    backoff = 2
+    announced = False
+    while _is_host and not _relay_stop:
+        try:
+            ctl = _relay_connect(host, port, "S4OM HOST {} {}".format(code, token))
+            _log("relay: room {} open on {}:{}".format(code, host, port))
+            if not announced:
+                _notify("S4OM online room code: {}".format(code))
+                announced = True
+            backoff = 2
+            ctl.settimeout(PING_TIMEOUT_RELAY)
+            while not _relay_stop:
+                line = _relay_readline(ctl)
+                if not line:
+                    raise RuntimeError("relay control link closed")
+                if line.startswith("CONN "):
+                    cid = line.split(" ", 1)[1].strip()
+                    threading.Thread(target=_relay_accept, args=(host, port, code, cid), daemon=True).start()
+        except Exception as e:
+            msg = str(e)
+            _log("relay host error: {}".format(msg))
+            if msg.startswith("ERR AUTH"):
+                _notify("S4OM: online play needs an active subscription (relay refused the token)")
+                return
+            if msg.startswith("ERR ROOM_TAKEN"):
+                _notify("S4OM: room code already in use on the relay")
+                return
+            time.sleep(backoff)
+            backoff = min(backoff * 2, 30)
+
+
+PING_TIMEOUT_RELAY = 60   # relay pings every 20s
+
+
+def _start_relay_host():
+    """Start the relay control thread if the launcher config names a relay."""
+    rc = _relay_cfg()
+    if rc is None:
+        return False
+    try:
+        from multimod import lobby
+        code = lobby.ROOM_CODE
+    except Exception:
+        code = ""
+    if not code:
+        _log("relay: no room code yet, not starting")
+        return False
+    threading.Thread(target=_relay_host_thread, args=(rc[0], rc[1], rc[2], code), daemon=True).start()
+    return True
+
+
 def _notify(text):
     """游戏内弹通知（S4MP 同款: sim_info + distributor 直发）"""
     try:
@@ -1127,6 +1239,20 @@ def _recv_loop(sock, is_client=False, player_id=None):
                         # signed lobby/world_snapshot frames arrive first and get
                         # dropped as pre-auth. lobby's welcome handler re-derives the
                         # same key, so this is idempotent.
+                        # Same race on the host side: a joiner's first signed frames
+                        # (heartbeat etc.) can beat the main-thread hello handler.
+                        # Safe to derive early: the key mixes in the room password,
+                        # so a wrong-password client still can't produce valid frames.
+                        if (not is_client and player_id is not None and msg.get("type") == "hello"
+                                and msg.get("proto_version") == PROTO_VERSION):
+                            try:
+                                from multimod import lobby as _lobby
+                                _c_nonce = str(msg.get("client_nonce", "")).encode()
+                                _h_nonce = _conn_nonces.get(player_id)
+                                if _c_nonce and _h_nonce:
+                                    _hmac_keys[player_id] = _derive_hmac_key(_lobby.ROOM_PASSWORD, _c_nonce, _h_nonce)
+                            except Exception as e:
+                                _log("early hello key derive error: {}".format(e))
                         if is_client and msg.get("type") == "welcome":
                             try:
                                 from multimod import lobby as _lobby
@@ -1378,7 +1504,17 @@ def _client_thread(host, port=DEFAULT_PORT):
             sock.ioctl(socket.SIO_KEEPALIVE_VALS, (1, 10000, 3000))
         except Exception:
             pass
-        sock.connect((host, port))
+        if _relay_join is not None and host == _relay_join[3]:
+            # fork: joining by room code through the S4OM relay
+            sock.close()
+            rh, rp, rtoken, rcode = _relay_join
+            sock = _relay_connect(rh, rp, "S4OM JOIN {} {}".format(rcode, rtoken))
+            try:
+                sock.ioctl(socket.SIO_KEEPALIVE_VALS, (1, 10000, 3000))
+            except Exception:
+                pass
+        else:
+            sock.connect((host, port))
         _log("connected to {}:{}".format(host, port))
         # 记录主机 IP（主机迁移重连用）——connect 成功后记录
         try:
@@ -1478,6 +1614,10 @@ def mp_host(port=None, visibility="public", _connection=None):
         _log("clock_sync setup error: {}".format(e))
     _network_thread = threading.Thread(target=_server_thread, args=(port,), daemon=True)
     _network_thread.start()
+    # fork: also open the room on the S4OM relay when configured (LAN keeps working)
+    if _start_relay_host():
+        from multimod import lobby as _lobby
+        output("S4OM online room code: {}".format(_lobby.ROOM_CODE))
     # v9.19: 安装 core_services.on_tick hook（替代 alarm，S4MP 风格）
 
     try:
@@ -1527,6 +1667,45 @@ def mp_join(host=None, port=None, _connection=None):
         start_client_discovery()
     except Exception as e:
         _log("discovery start error: {}".format(e))
+
+
+def _join_via_relay(code):
+    """Point the client at the relay for this room code and start connecting."""
+    global _network_thread, _is_host, _relay_join
+    rc = _relay_cfg()
+    if rc is None:
+        return False, "no relay configured"
+    code = str(code).strip().upper()
+    _relay_join = (rc[0], rc[1], rc[2], code)
+    _is_host = False
+    try:
+        from multimod import clock_sync
+        clock_sync.set_host_flag(False)
+        clock_sync._install_clock_hook()
+    except Exception as e:
+        _log("clock_sync setup error: {}".format(e))
+    _ensure_alarm()
+    _network_thread = threading.Thread(target=_client_thread, args=(code, 0), daemon=True)
+    _network_thread.start()
+    try:
+        from multimod import core_hooks; core_hooks.install_on_tick_hook()
+    except Exception as e:
+        _log("on_tick hook install error: {}".format(e))
+    return True, "joining room {} via relay".format(code)
+
+
+@sims4.commands.Command('mp_join_code', command_type=sims4.commands.CommandType.Live)
+def mp_join_code(code=None, _connection=None):
+    """fork: join an online S4OM room by its code (no IP, no port forwarding)."""
+    output = sims4.commands.CheatOutput(_connection)
+    if not code:
+        output("Usage: mp_join_code <ROOM CODE>")
+        return
+    if _network_thread and _network_thread.is_alive():
+        output("MP is already running")
+        return
+    ok, desc = _join_via_relay(code)
+    output(desc if ok else "S4OM: " + desc)
 
 
 @sims4.commands.Command('mp_say', command_type=sims4.commands.CommandType.Live)
@@ -1655,7 +1834,9 @@ def _apply_launcher_config():
 
     返回: (bool ok, str desc)
     """
-    global _network_thread, _host_port  # ⚠️ 必须声明！否则赋值被当局部变量 → referenced before assignment
+    # fork: _is_host/_my_player_id were missing here, so launcher-started hosts never
+    # actually became host (assignments below only set locals).
+    global _network_thread, _host_port, _is_host, _my_player_id  # ⚠️ 必须声明！否则赋值被当局部变量 → referenced before assignment
     cfg = _load_launcher_config()
     if not cfg:
         return False, "无启动器配置 (mp_launcher_config.json)"
@@ -1693,8 +1874,19 @@ def _apply_launcher_config():
         except Exception as e:
             _log("on_tick hook install error: {}".format(e))
         _log("auto host started on :{}".format(port))
+        if _start_relay_host():
+            _log("auto host: relay room opened")
         # ⚠️ v5.5 修复：主菜单阶段 alarm 可能注册失败 → 后台重试，
         # 用户进地段后自动补注册（无需手动 mp_host）
+        _ensure_alarm_retry()
+    elif mode == "join" and cfg.get("room_code") and _relay_cfg() is not None:
+        # fork: online join by room code through the relay
+        if _network_thread and _network_thread.is_alive():
+            return False, "MP 已经在运行"
+        ok, desc = _join_via_relay(cfg["room_code"])
+        if not ok:
+            return False, desc
+        _log("auto join " + desc)
         _ensure_alarm_retry()
     elif mode == "join":
         host = cfg.get("host", "")

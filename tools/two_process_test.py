@@ -44,7 +44,13 @@ def _install_game_stubs():
     sys.modules['sims4.resources'] = type('resources', (), {})
 
 
-def run_peer(role):
+RELAY_PORT = 17656
+RELAY_STATUS_PORT = 17657
+ROOM = "TESTRM"
+RELAY_PY = os.path.join(HERE, "..", "..", "relay", "relay.py")
+
+
+def run_peer(role, mode="lan"):
     _install_game_stubs()
     sys.path.insert(0, SRC)
     import threading
@@ -54,17 +60,28 @@ def run_peer(role):
     network._log = lambda msg: log.append(str(msg))
     network._notify = lambda msg: log.append("NOTIFY " + str(msg))
     network._ensure_alarm = lambda: None
-    network._load_launcher_config = lambda: {"name": role, "password": ""}
+    cfg = {"name": role, "password": ""}
+    if mode == "relay":
+        cfg["relay"] = "127.0.0.1:{}".format(RELAY_PORT)
+    network._load_launcher_config = lambda: cfg
     network.ALLOW_SELF = True
 
     if role == "host":
         network._is_host = True
         network._my_player_id = 0
-        threading.Thread(target=network._server_thread, args=(PORT,), daemon=True).start()
+        if mode == "relay":
+            lobby.ROOM_CODE = ROOM
+            assert network._start_relay_host(), "relay host did not start"
+        else:
+            threading.Thread(target=network._server_thread, args=(PORT,), daemon=True).start()
     else:
         time.sleep(1.0 if role == "client" else 1.5)  # let the host bind first
         network._is_host = False
-        threading.Thread(target=network._client_thread, args=("127.0.0.1", PORT), daemon=True).start()
+        if mode == "relay":
+            ok, desc = network._join_via_relay(ROOM.lower())  # codes are case-insensitive
+            assert ok, desc
+        else:
+            threading.Thread(target=network._client_thread, args=("127.0.0.1", PORT), daemon=True).start()
 
     said = False
     ever_connected = False
@@ -105,9 +122,29 @@ def run_peer(role):
     print("RESULT " + json.dumps(result, ensure_ascii=False))
 
 
-def main():
+def main(mode="lan"):
+    relay_box = []
+    try:
+        return _main(mode, relay_box)
+    finally:
+        for r in relay_box:
+            r.kill()
+
+
+def _main(mode, relay_box):
     env = dict(os.environ, PYTHONIOENCODING="utf-8", PYTHONUTF8="1")
-    procs = {r: subprocess.Popen([sys.executable, __file__, r], stdout=subprocess.PIPE,
+    relay = None
+    if mode == "relay":
+        relay = subprocess.Popen([sys.executable, RELAY_PY, "--open", "--port", str(RELAY_PORT),
+                                  "--status-port", str(RELAY_STATUS_PORT), "--bind", "127.0.0.1",
+                                  "--log", os.devnull], stdout=subprocess.PIPE, stderr=subprocess.STDOUT, env=env)
+        relay_box.append(relay)
+        for _ in range(20):
+            line = relay.stdout.readline()
+            if not line or line.strip() == b"READY":
+                break
+        assert line.strip() == b"READY", "relay failed to start: " + line.decode("utf-8", "replace")
+    procs = {r: subprocess.Popen([sys.executable, __file__, r, mode], stdout=subprocess.PIPE,
                                  stderr=subprocess.STDOUT, env=env)
              for r in ROLES}
     results = {}
@@ -136,12 +173,12 @@ def main():
             print("  chat:", r["chat"], "bad_names:", r["bad_names"])
             for l in r["log_tail"]:
                 print("  log:", l)
-    print("OVERALL", "PASS" if ok else "FAIL")
+    print("MODE", mode, "OVERALL", "PASS" if ok else "FAIL")
     return 0 if ok else 1
 
 
 if __name__ == "__main__":
-    if len(sys.argv) > 1:
-        run_peer(sys.argv[1])
+    if len(sys.argv) > 1 and sys.argv[1] in ROLES:
+        run_peer(sys.argv[1], sys.argv[2] if len(sys.argv) > 2 else "lan")
     else:
-        sys.exit(main())
+        sys.exit(main(sys.argv[1] if len(sys.argv) > 1 else "lan"))

@@ -660,23 +660,22 @@ def schedule_reconnect_with_backoff(broken_sock=None):
                     try:
                         network._log("reconnect attempt {}/{} to {}:{} (delay {:.1f}s)".format(
                             attempts, 20, host_ip, net.DEFAULT_PORT, delay))
-                        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-                        sock.settimeout(3)
-                        sock.connect((host_ip, net.DEFAULT_PORT))
-                        sock.settimeout(None)
-                        net._client_socket = sock
-                        network._log("reconnect: connected to {}:{}".format(host_ip, net.DEFAULT_PORT))
-                        _notify("已重连主机")
-                        # 重新握手 hello
-                        try:
-                            net._send_json(sock, {"type": "hello", "name": _get_player_name(),
-                                                  "password": "",
-                                                  "proto_version": net.PROTO_VERSION})
-                        except Exception:
-                            pass
-                        net._ensure_alarm()
+                        # fork: reuse the normal connect path. The old inline reconnect
+                        # sent a hello with no client_nonce/password, so no session key
+                        # was derived and every signed frame afterwards was dropped; it
+                        # also always dialled host_ip directly, which can't work for
+                        # relay rooms (host_ip is then the room code).
                         import threading as _t
-                        _t.Thread(target=net._recv_loop, args=(sock, True), daemon=True).start()
+                        _t.Thread(target=net._client_thread, args=(host_ip, net.DEFAULT_PORT),
+                                  daemon=True).start()
+                        for _ in range(50):
+                            if net._client_socket is not None:
+                                break
+                            time.sleep(0.1)
+                        if net._client_socket is None:
+                            raise RuntimeError("connect did not complete")
+                        network._log("reconnect: connected to {}".format(host_ip))
+                        _notify("已重连主机")
                         return
                     except Exception as e:
                         network._log("reconnect attempt failed: {}".format(e))
