@@ -262,7 +262,17 @@ def on_client_disconnect(player_id):
 def add_host_self(visibility="public", password=""):
     """房主把自己加入房间列表 + 生成房间码 + 设置可见性（mp_host 时调用）"""
     global _members, ROOM_CODE, ROOM_VISIBILITY, ROOM_PASSWORD
-    ROOM_CODE = _gen_room_code()
+    # fork: use the code the S4OM launcher picked (shown to the host before the game
+    # loads, so it can be shared early); otherwise generate one as before.
+    ROOM_CODE = ""
+    try:
+        cfg = network._load_launcher_config() or {}
+        pre = str(cfg.get("room_code", "") or "").strip().upper()
+        if cfg.get("mode") == "host" and 4 <= len(pre) <= 12 and all(c in ROOM_CODE_ALPHABET for c in pre):
+            ROOM_CODE = pre
+    except Exception:
+        pass
+    ROOM_CODE = ROOM_CODE or _gen_room_code()
     ROOM_VISIBILITY = visibility if visibility in ("public", "private") else "public"
     ROOM_PASSWORD = password if ROOM_VISIBILITY == "private" else ""
     _members[0] = {
