@@ -15,7 +15,10 @@ from functools import wraps as _wraps
 _tick_hook_installed = False
 _original_on_tick = None
 _last_proc_time = 0
-_PROC_INTERVAL = 0.5  # 500ms between processing cycles
+_last_fast_time = 0
+_PROC_INTERVAL = 0.5   # housekeeping (ping, heartbeats, watchdog, zone checks)
+_FAST_INTERVAL = 0.03  # fork: incoming game messages ~every tick - was gated to 500ms,
+                       # which alone added up to half a second of lag to every update
 
 
 def _log(msg):
@@ -70,14 +73,23 @@ def remove_on_tick_hook():
 
 
 def _on_game_tick():
-    """每次游戏 tick 调用，节流到 500ms 处理周期"""
-    global _last_proc_time
+    """Every game tick: drain incoming messages (budgeted); housekeeping every 500ms."""
+    global _last_proc_time, _last_fast_time
     now = _time.time()
-    if now - _last_proc_time < _PROC_INTERVAL:
-        return
-    _last_proc_time = now
     try:
         from multimod import network
-        network._on_tick_callback()
     except Exception:
-        pass
+        return
+    if now - _last_proc_time >= _PROC_INTERVAL:
+        _last_proc_time = now
+        _last_fast_time = now
+        try:
+            network._on_tick_callback()       # includes _process_incoming
+        except Exception:
+            pass
+    elif now - _last_fast_time >= _FAST_INTERVAL:
+        _last_fast_time = now
+        try:
+            network._process_incoming()       # bounded by MAX_MSGS_PER_TICK
+        except Exception:
+            pass

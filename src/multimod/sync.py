@@ -27,7 +27,7 @@ import sims4.commands
 from multimod import network
 
 # ============ 配置 ============
-SYNC_INTERVAL = 0.5  # 位置广播间隔（秒）
+SYNC_INTERVAL = 0.25  # 位置广播间隔（秒） fork: was 0.5 - smoother movement, still tiny traffic
 POS_THRESHOLD = 0.3  # 位置变化超过该距离才广播（米，减少网络流量）
 
 

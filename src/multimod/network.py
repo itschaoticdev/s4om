@@ -667,7 +667,7 @@ def get_health_label():
 
 
 # ============ 自动消息处理 (alarm 循环, 游戏主线程) ============
-_ALARM_INTERVAL_MS = 500
+_ALARM_INTERVAL_MS = 100   # fork: was 500 - fallback alarm path (before the tick hook) drains messages faster
 _process_alarm_handle = None
 _host_port = DEFAULT_PORT       # v9.23: 看门狗重启 server 线程用
 _last_watchdog_check = 0.0      # v9.23: 看门狗节流（10s 一次）
@@ -755,9 +755,19 @@ def _check_zone_change():
         _log("zone check error: {}".format(e))
 
 
+_last_alarm_housekeeping = 0
+
+
 def _process_alarm_callback(_alarm_handle):
     """周期检查消息队列 + 进图状态上报 + 启动器命令桥 + 心跳检查（必须主线程）"""
+    global _last_alarm_housekeeping
     _process_incoming()
+    # fork: the alarm now fires every 100ms for snappier messages; housekeeping
+    # (including a file read for launcher commands) stays at the old 500ms pace.
+    now = time.time()
+    if now - _last_alarm_housekeeping < 0.5:
+        return True
+    _last_alarm_housekeeping = now
     _send_ping()  # v9.14: 主动 ping 测 RTT（连接健康监控）
     _check_lot_status()  # M3d: 进图门槛检测
     _check_launcher_cmd()  # M3d: 启动器按钮 → 游戏内命令桥

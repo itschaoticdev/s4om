@@ -161,26 +161,27 @@ from multimod import sync as sync_mod
 
 # D1: 无 RTT → 默认间隔
 network._rtt_samples = []
+BASE = 0.25  # fork: position interval lowered from 0.5
 interval = sync_mod.SYNC_INTERVAL
-check('无 RTT 默认间隔', interval == 0.5)
+check('无 RTT 默认间隔', interval == BASE)
 
 # D2: RTT 200-400 → 1.5x
 network._rtt_samples = [250, 260, 240]
 rtt = network.get_rtt_ms()
 adaptive = sync_mod.SYNC_INTERVAL * 1.5 if rtt > 200 else sync_mod.SYNC_INTERVAL
-check('RTT 250ms → 1.5x 间隔', adaptive == 0.75, "adaptive={}".format(adaptive))
+check('RTT 250ms → 1.5x 间隔', abs(adaptive - BASE * 1.5) < 1e-9, "adaptive={}".format(adaptive))
 
 # D3: RTT > 400 → 2x
 network._rtt_samples = [500, 510, 490]
 rtt = network.get_rtt_ms()
 adaptive = sync_mod.SYNC_INTERVAL * 2.0 if rtt > 400 else sync_mod.SYNC_INTERVAL
-check('RTT 500ms → 2x 间隔', adaptive == 1.0)
+check('RTT 500ms → 2x 间隔', abs(adaptive - BASE * 2.0) < 1e-9)
 
 # D4: RTT < 200 → 默认
 network._rtt_samples = [50, 60, 55]
 rtt = network.get_rtt_ms()
 adaptive = sync_mod.SYNC_INTERVAL
-check('RTT 低 → 默认间隔', adaptive == 0.5)
+check('RTT 低 → 默认间隔', adaptive == BASE)
 
 # ============ E: 真实 TCP ping/pong 闭环 ============
 print()
