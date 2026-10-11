@@ -14,7 +14,7 @@ import shutil
 import sys
 import zipfile
 
-NAME = "S4O"
+NAME = "S4OM"
 ROOT = os.path.dirname(os.path.abspath(__file__))
 SRC = os.path.join(ROOT, "src")
 BUILD = os.path.join(ROOT, "build")
