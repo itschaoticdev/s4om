@@ -25,7 +25,7 @@ import customtkinter as ctk
 from PIL import Image, ImageTk
 
 APP_VERSION = "9.22.1"
-APP_REPO = "mo9652962-ai/sims4-multiplayer-dev"  # v9.22 修复: 自动更新源指向本项目仓库
+APP_REPO = ""  # fork: update checks disabled until our own release repo exists (was upstream mo9652962-ai/sims4-multiplayer-dev)
                                              # （原指向 second-brain，更新检查永远 404）
 UPDATE_URL = "https://api.github.com/repos/{}/releases/latest".format(APP_REPO)
 DEFAULT_GAME_DIR = r"D:\Games\The Sims 4"
@@ -1099,6 +1099,8 @@ class LauncherApp(ctk.CTk):
     # ============ v8.5: 自动更新检查（研究: GitHub Releases API） ============
     def _check_update_async(self):
         def _check():
+            if not APP_REPO:
+                return
             try:
                 import json as _json
                 import urllib.request as _ur
