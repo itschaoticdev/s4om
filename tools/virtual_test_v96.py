@@ -80,7 +80,7 @@ network._ensure_alarm = lambda: None
 print('[A] 启动器纯逻辑 ×20')
 import importlib.util
 # 加载 launcher 模块（只读纯函数，不实例化 GUI）
-launcher_spec = importlib.util.spec_from_file_location('launcher', 'D:/Sims4-Multiplayer-Dev/launcher.py')
+launcher_spec = importlib.util.spec_from_file_location('launcher', os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'launcher.py'))
 launcher = importlib.util.module_from_spec(launcher_spec)
 launcher_spec.loader.exec_module(launcher)
 

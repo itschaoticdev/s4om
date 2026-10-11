@@ -156,7 +156,7 @@ sys.modules['miniupnpc'] = type('m', (), {})
 
 # 加载 launcher 并构建 GUI
 import importlib.util
-spec = importlib.util.spec_from_file_location('launcher', 'D:/Sims4-Multiplayer-Dev/launcher.py')
+spec = importlib.util.spec_from_file_location('launcher', os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'launcher.py'))
 launcher = importlib.util.module_from_spec(spec)
 try:
     spec.loader.exec_module(launcher)

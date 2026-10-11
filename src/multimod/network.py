@@ -153,6 +153,18 @@ class _AlarmOwner(object):
 _ALARM_OWNER = _AlarmOwner()
 
 
+def _member_name(player_id):
+    """Display name for a lobby member (host side); falls back to P<id>."""
+    try:
+        from multimod import lobby
+        m = lobby._members.get(player_id)
+        if m and m.get("name"):
+            return str(m["name"])[:16]
+    except Exception:
+        pass
+    return "P{}".format(player_id)
+
+
 def _notify(text):
     """游戏内弹通知（S4MP 同款: sim_info + distributor 直发）"""
     try:
@@ -244,6 +256,14 @@ def _process_incoming():
                     _incoming_queue.put((sub, sender_pid))
                 continue
             if mtype == "chat":
+                # fork: host stamps the real sender name (clients sent "me") and
+                # relays to the other clients - previously a client's chat only
+                # reached the host in rooms of 3+.
+                if _is_host and sender_pid is not None:
+                    data = dict(data, **{"from": _member_name(sender_pid)})
+                    _broadcast({"type": "chat", "from": data["from"],
+                                "text": str(data.get("text", ""))[:500]},
+                               exclude=sender_pid)
                 _notify("[{}] {}".format(data.get("from", "peer"), data.get("text", "")))
                 # v9.0: 写入 lobby state → 启动器聊天页显示
                 try:
@@ -1042,7 +1062,7 @@ def _recv_loop(sock, is_client=False, player_id=None):
 
     帧格式: 8字节大端长度 + pickle 数据
     """
-    global _client_socket  # v9.19.1: 函数内赋值 _client_socket=None 使其成为局部变量，需显式 global
+    global _client_socket, _my_player_id  # v9.19.1: 函数内赋值 _client_socket=None 使其成为局部变量，需显式 global
     import pickle
     from struct import unpack
     buf = b""
@@ -1102,6 +1122,21 @@ def _recv_loop(sock, is_client=False, player_id=None):
                         if msg.get("type") not in ("hello", "welcome"):
                             _log("pre-auth non-handshake msg dropped: {}".format(msg.get("type")))
                             continue
+                        # fork: derive the client session key here on the recv thread.
+                        # Waiting for the main-thread welcome handler let the host's
+                        # signed lobby/world_snapshot frames arrive first and get
+                        # dropped as pre-auth. lobby's welcome handler re-derives the
+                        # same key, so this is idempotent.
+                        if is_client and msg.get("type") == "welcome":
+                            try:
+                                from multimod import lobby as _lobby
+                                _pid = int(msg.get("player_id", 0))
+                                _h_nonce = str(msg.get("host_nonce", "")).encode()
+                                if _h_nonce and _my_nonce:
+                                    _hmac_keys[_pid] = _derive_hmac_key(_lobby.ROOM_PASSWORD, _my_nonce, _h_nonce)
+                                    _my_player_id = _pid
+                            except Exception as e:
+                                _log("early welcome key derive error: {}".format(e))
                     # v9.21 P0-4: 入站队列上限——对端异常高频发送/洪泛时，
                     # 无界队列会吃满内存（主线程 alarm 每 500ms 才消费一次）。
                     # 超限丢弃最新消息并记日志（保留已排队的旧消息，避免状态断裂）。
@@ -1503,7 +1538,7 @@ def mp_say(text=None, _connection=None):
         return
     # v9.1: 修复房主发不了消息的 bug——host 用 _broadcast，client 用 _send_json
     if _is_host:
-        _broadcast({"type": "chat", "from": "me", "text": text})
+        _broadcast({"type": "chat", "from": _member_name(0), "text": text})
     elif _client_socket is None:
         output("未连接! 先 mp_host 或 mp_join")
         return

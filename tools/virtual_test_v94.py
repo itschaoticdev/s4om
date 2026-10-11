@@ -45,7 +45,7 @@ network._ensure_alarm = lambda: None
 # ============ A: Delta 压缩数学正确性 ×100 ============
 print('[A] Delta 位置压缩数学正确性 ×100')
 import importlib.util
-spec = importlib.util.spec_from_file_location('sync', 'D:/Sims4-Multiplayer-Dev/src/multimod/sync.py')
+spec = importlib.util.spec_from_file_location('sync', os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'src/multimod/sync.py'))
 sync = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(sync)
 
