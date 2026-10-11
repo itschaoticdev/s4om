@@ -237,10 +237,19 @@ def _relay_host_thread(host, port, token, code):
                 announced = True
             backoff = 2
             ctl.settimeout(PING_TIMEOUT_RELAY)
+            try:   # OS-level keepalive as well, like the LAN sockets
+                ctl.ioctl(socket.SIO_KEEPALIVE_VALS, (1, 10000, 3000))
+            except Exception:
+                pass
             while not _relay_stop:
                 line = _relay_readline(ctl)
                 if not line:
                     raise RuntimeError("relay control link closed")
+                if line == "PING":
+                    # Answer every ping. With traffic flowing only relay -> host, home routers
+                    # and ISP NATs dropped the link roughly every 2 minutes (WinError 10054).
+                    ctl.sendall(b"PONG\n")
+                    continue
                 if line.startswith("CONN "):
                     cid = line.split(" ", 1)[1].strip()
                     threading.Thread(target=_relay_accept, args=(host, port, code, cid), daemon=True).start()
@@ -1934,12 +1943,18 @@ def _apply_launcher_config():
     # 提前放弃（日志 "auto sync skipped: 60s 内未建立连接" 即此情况）
     if cfg.get("auto_sync", True):
         def _delayed_sync():
-            for _ in range(150):
-                if _client_socket is not None and _network_thread is not None and _network_thread.is_alive():
+            # fork: the host never has a _client_socket, so this used to always time out for
+            # hosts and their positions were never broadcast. Hosts wait until they're in a lot
+            # (loading a save can take minutes); joiners still wait for their connection.
+            for _ in range(1800):
+                if _is_host:
+                    if _last_lot_status:
+                        break
+                elif _client_socket is not None and _network_thread is not None and _network_thread.is_alive():
                     break
                 time.sleep(1.0)
             else:
-                _log("auto sync skipped: 150s 内未建立连接")
+                _log("auto sync skipped: not connected / not in a lot after 30 min")
                 return
             try:
                 from multimod import sync
